@@ -1,0 +1,9 @@
+# Dependencies for Stages 1-4 (ASCII only: pip on Windows decodes this file with cp1252).
+# Top-level versions below were installed successfully on Windows 11 / Python 3.13.2 (pip freeze, 2026-11-08).
+# Deferred: PyQt6 and pyqtgraph (Stage 5), scapy (Stage 8).
+
+psutil==7.2.2
+fastapi==0.162.2
+uvicorn[standard]==0.54.0
+httpx==0.28.1
+pytest==9.2.0

@@ -1,0 +1,19 @@
+# Môi trường ảo
+venv/
+.venv/
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Cấu hình cục bộ và bí mật
+.env
+
+# Log (giữ lại thư mục)
+data/logs/*
+!data/logs/.gitkeep
+
+# IDE
+.idea/
+.vscode/
