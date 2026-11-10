@@ -23,6 +23,10 @@ class InterfaceNotFoundError(LookupError):
     """Interface được yêu cầu không có trong bộ đếm của hệ thống."""
 
 
+class InterfaceDownError(RuntimeError):
+    """Interface tồn tại nhưng đang ở trạng thái không hoạt động (DOWN)."""
+
+
 def compute_rate(previous_bytes: int, current_bytes: int, elapsed_seconds: float) -> float:
     """Tính tốc độ (byte/giây) giữa hai lần đọc bộ đếm.
 
@@ -122,6 +126,19 @@ class NetworkCollector:
             if total > best_total:
                 best_name, best_total = info.name, total
         return best_name
+
+    def ensure_interface_up(self, interface: str) -> None:
+        """Đảm bảo interface tồn tại và đang hoạt động trước khi lấy mẫu.
+
+        ``net_io_counters(pernic=True)`` có thể vẫn trả về counters của adapter
+        đã ngắt kết nối. Vì vậy không thể dùng sự tồn tại của counters để kết luận
+        interface vẫn đang UP.
+        """
+        stat = self._if_stats().get(interface)
+        if stat is None:
+            raise InterfaceNotFoundError(f"Không tìm thấy trạng thái interface: {interface}")
+        if not stat.isup:
+            raise InterfaceDownError(f"Interface '{interface}' đang ngắt kết nối (DOWN)")
 
     def read_counters(self, interface: str) -> InterfaceCounters:
         """Đọc bộ đếm hiện tại của một interface."""

@@ -37,12 +37,7 @@ class InterfaceCounters(BaseModel):
 
 
 class TrafficSample(BaseModel):
-    """Một mẫu lưu lượng của một interface.
-
-    ``upload_bytes_per_second`` và ``download_bytes_per_second`` là tốc độ trung bình
-    kể từ lần lấy mẫu trước của cùng interface. Giá trị ``None`` nghĩa là CHƯA ĐO ĐƯỢC
-    (lần đọc đầu tiên, chưa có mốc so sánh), không phải 0.
-    """
+    """Một mẫu lưu lượng của một interface."""
 
     model_config = ConfigDict(frozen=True)
 
@@ -57,11 +52,7 @@ class TrafficSample(BaseModel):
 
 
 class HealthResponse(BaseModel):
-    """Phản hồi của GET /api/health.
-
-    ``status`` là "ok" khi dịch vụ lấy mẫu hoạt động bình thường và "degraded" khi đang có lỗi
-    (ví dụ không tìm thấy interface); HTTP Server vẫn chạy trong cả hai trường hợp.
-    """
+    """Phản hồi của GET /api/health."""
 
     model_config = ConfigDict(frozen=True)
 
@@ -95,3 +86,89 @@ class ServerStatusData(BaseModel):
     monitored_interface: str | None = None
     sample_interval_seconds: float
     last_error: str | None = None
+
+
+# --- Giai đoạn 8: Packet Capture Schemas ---
+
+
+class PacketMetadata(BaseModel):
+    """Metadata gói tin trích xuất qua Scapy."""
+
+    model_config = ConfigDict(frozen=True)
+
+    timestamp: datetime
+    src_ip: str
+    dst_ip: str
+    src_port: int | None = None
+    dst_port: int | None = None
+    protocol: str
+    length_bytes: int
+
+
+class CaptureStatus(BaseModel):
+    """Trạng thái tiến trình Packet Capture."""
+
+    model_config = ConfigDict(frozen=True)
+
+    is_running: bool
+    interface: str | None = None
+    packet_count: int = 0
+    error_message: str | None = None
+
+
+# --- Giai đoạn 9: Analytics & Alert Schemas ---
+
+
+class ProtocolDistribution(BaseModel):
+    """Thống kê số lượng và tỷ lệ % theo từng giao thức."""
+
+    model_config = ConfigDict(frozen=True)
+
+    protocol: str
+    packet_count: int
+    percentage: float
+
+
+class TopTalkerItem(BaseModel):
+    """Thông tin IP tiêu thụ băng thông nhiều nhất."""
+
+    model_config = ConfigDict(frozen=True)
+
+    ip: str
+    total_bytes: int
+    packet_count: int
+
+
+class AnalyticsSummary(BaseModel):
+    """Tổng hợp phân tích giao thức và Top Talkers."""
+
+    model_config = ConfigDict(frozen=True)
+
+    total_packets_analyzed: int
+    protocols: list[ProtocolDistribution]
+    top_senders: list[TopTalkerItem]
+    top_receivers: list[TopTalkerItem]
+
+
+class AlertRule(BaseModel):
+    """Cấu hình ngưỡng cảnh báo lưu lượng mạng."""
+
+    model_config = ConfigDict(frozen=False)
+
+    max_upload_bytes_per_sec: float | None = None
+    max_download_bytes_per_sec: float | None = None
+    enabled: bool = True
+
+
+class AlertEvent(BaseModel):
+    """Sự kiện cảnh báo khi tốc độ lưu lượng vượt ngưỡng."""
+
+    model_config = ConfigDict(frozen=True)
+
+    timestamp: datetime
+    alert_type: str  # "upload_exceeded" | "download_exceeded"
+    metric_name: str
+    current_value: float
+    threshold_value: float
+    message: str
+    

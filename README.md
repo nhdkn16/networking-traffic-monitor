@@ -1,108 +1,50 @@
-# Network Monitor
+# Network Traffic Monitor (Giám sát Lưu lượng Mạng)
 
-Giám sát lưu lượng mạng theo thời gian thực bằng HTTP và WebSocket (mô hình Client-Server, Host - Guest VirtualBox).
+Hệ thống ứng dụng Client - Server đa luồng giám sát và phân tích lưu lượng mạng thời gian thực trên Windows sử dụng **Python 3.10+**, **FastAPI**, **PyQt6**, **pyqtgraph**, và **Scapy**.
 
-> **Trạng thái:** Giai đoạn 4 - đã có Collector (psutil), lệnh chẩn đoán `collect`, HTTP API và WebSocket (FastAPI).
-> Chưa có giao diện. Xem `CLAUDE.md` mục 15 để biết trạng thái đã được kiểm chứng.
+---
 
-## Yêu cầu
+## Tính năng chính
 
-- Python 3.10 trở lên (đang dùng 3.13 trên Host Windows 11)
+1. **Giám sát Lưu lượng Thời gian thực (Realtime Traffic Monitoring):**
+   - Đo tốc độ Upload/Download (KB/s, MB/s) và tổng dung lượng tích lũy theo chu kỳ lấy mẫu cố định.
+   - Trực quan hóa dữ liệu bằng biểu đồ đường sóng mượt mà với `pyqtgraph`.
 
-## Cài đặt (PowerShell, tại thư mục gốc dự án)
+2. **Cơ chế Reconnect & Resync Tự động (Client Resync):**
+   - Tự động kết nối lại theo thuật toán Exponential Backoff ($1s, 2s, 4s, 8s...$) khi mất kết nối.
+   - Chèn mốc `np.nan` để ngắt nét vẽ nét đứt trên biểu đồ khi rớt mạng.
+   - Tự động gọi HTTP REST API để đồng bộ lại trạng thái Server và danh sách Interface khi WebSocket phục hồi.
 
-```powershell
-python -m venv venv
-.\venv\Scripts\Activate.ps1
-pip install -r requirements.txt
-```
+3. **Packet Capture & Phân tích Gói tin (Scapy / Npcap):**
+   - Bắt gói tin thời gian thực ở mức Kernel driver qua Npcap.
+   - Trích xuất Metadata gói tin (IP Nguồn/Đích, Port, Protocol TCP/UDP/ICMP, Length) lưu trong bộ nhớ đệm Ring Buffer (1000 gói).
 
-Nếu PowerShell chặn script kích hoạt venv:
+4. **Phân tích Giao thức & Top Talkers:**
+   - Thống kê tỷ lệ phân bố % các giao thức mạng.
+   - Xếp hạng Top 5 / Top 10 IP gửi và nhận nhiều dữ liệu nhất.
 
-```powershell
-Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
-```
+5. **Động cơ Cảnh báo Ngưỡng Băng thông (Traffic Alert Engine):**
+   - Đặt ngưỡng tốc độ Upload / Download tối đa.
+   - Đẩy sự kiện cảnh báo đỏ tức thì khi băng thông vượt quá ngưỡng thiết lập.
 
-## Chạy
+6. **Giao diện Quản trị Server GUI (PyQt6 trên Host):**
+   - Quản lý khởi động / dừng dịch vụ Uvicorn ASGI trong luồng phụ (`QThread`).
+   - Tự động chuyển hướng Python logging chảy trực tiếp vào Console GUI.
 
-```powershell
-python main.py --help
-python main.py server   # HTTP API trên Host (chưa có Server GUI)
-python main.py client   # chưa triển khai
-```
+---
 
-### Server HTTP API (`server`)
+## Yêu cầu Hệ thống
 
-```powershell
-python main.py server                                   # http://127.0.0.1:8000 (chỉ máy Host truy cập được)
-python main.py server --host 0.0.0.0 --port 8000        # cho Guest truy cập (mạng lab, chưa có xác thực)
-python main.py server --interface "Wi-Fi"               # chỉ định interface giám sát
-```
+- **Hệ điều hành:** Windows 10 / Windows 11.
+- **Python:** Phiên bản 3.10 trở lên (khuyên dùng Python 3.13).
+- **Driver Npcap:** Cần cài đặt [Npcap](https://npcap.com/) (chế độ WinPcap API-compatible) để sử dụng tính năng Packet Capture.
+- **Quyền hạn:** Mở Terminal / PowerShell dưới quyền **Run as Administrator** khi chạy Server để Scapy truy cập card mạng.
 
-| Method | Endpoint | Mô tả |
-|---|---|---|
-| GET | `/api/health` | Trạng thái Server (`ok` hoặc `degraded`), phiên bản, thời gian chạy, số Client WebSocket |
-| GET | `/api/interfaces` | Danh sách interface; thêm `?include_all=true` để xem cả loopback/ngắt kết nối |
-| GET | `/api/statistics/current` | Mẫu lưu lượng mới nhất; trả **503** nếu chưa có dữ liệu (không trả số 0 giả) |
+---
 
-Trang tài liệu và thử API trực tiếp: `http://127.0.0.1:8000/docs`.
+## Cài đặt Môi trường
 
-Thử bằng PowerShell:
-
-```powershell
-Invoke-RestMethod http://127.0.0.1:8000/api/health
-Invoke-RestMethod http://127.0.0.1:8000/api/interfaces
-Invoke-RestMethod http://127.0.0.1:8000/api/statistics/current
-```
-
-Biến môi trường (tùy chọn): `NETWORK_MONITOR_HOST`, `NETWORK_MONITOR_PORT`,
-`NETWORK_MONITOR_INTERVAL` (chu kỳ lấy mẫu, giây), `NETWORK_MONITOR_INTERFACE`,
-`NETWORK_MONITOR_MAX_WS_CLIENTS` (số Client WebSocket tối đa, mặc định 20).
-Tham số dòng lệnh ghi đè biến môi trường.
-
-Tốc độ do một tác vụ nền lấy mẫu mỗi chu kỳ; vài giây đầu sau khi khởi động API trả 503.
-
-### WebSocket (`/ws`)
-
-Server chủ động đẩy dữ liệu thật tới mọi Client đang kết nối: `ws://127.0.0.1:8000/ws`.
-Mọi message có dạng `{"type": ..., "timestamp": "...Z", "data": {...}}` (timestamp là UTC).
-
-| Hướng | `type` | Khi nào |
-|---|---|---|
-| Server → Client | `server_status` | Ngay khi kết nối, và mỗi khi trạng thái đổi giữa `ok` và `degraded` |
-| Server → Client | `traffic_update` | Mỗi khi có mẫu mới (theo chu kỳ lấy mẫu, mặc định 1 giây) |
-| Server → Client | `pong` | Phản hồi `ping` |
-| Server → Client | `error` | Client gửi message sai (kết nối vẫn giữ); `data.code`: `invalid_json`, `invalid_message`, `unknown_type`, `binary_not_supported`, `message_too_large` |
-| Client → Server | `ping` | Tùy chọn, để kiểm tra kết nối |
-
-Đơn vị: `*_bytes_per_second` là byte/giây; `total_*_bytes` là byte tích lũy. Client chậm hoặc
-lỗi (gửi quá 2 giây không xong) bị ngắt; vượt giới hạn số Client thì bị đóng với mã 1013.
-
-Xem message bằng công cụ độc lập (chỉ cần thư viện `websockets`, có thể chép riêng sang Guest):
-
-```powershell
-python tools/ws_listen.py
-python tools/ws_listen.py --url ws://192.168.56.1:8000/ws --count 10
-python tools/ws_listen.py --raw --ping-interval 5
-```
-
-### Chẩn đoán Collector (`collect`)
-
-Đọc bộ đếm thật của máy đang chạy lệnh và in tốc độ gửi/nhận mỗi chu kỳ.
-Quy ước hiển thị: hệ số 1000 (KB/s, MB/s), kèm Mbps (1 byte = 8 bit).
-
-```powershell
-python main.py collect --list                 # interface đang hoạt động
-python main.py collect --list --all           # gồm cả interface ngắt kết nối và loopback
-python main.py collect                        # tự chọn interface, Ctrl+C để dừng
-python main.py collect --interface "Wi-Fi" --interval 1 --count 10
-```
-
-Tên interface có dấu cách hoặc dấu gạch nối cần đặt trong dấu nháy kép.
-Tốc độ là trung bình kể từ lần lấy mẫu trước; lần đọc đầu tiên chỉ dùng làm mốc nên không in.
-
-## Kiểm thử
-
-```powershell
-python -m pytest -v
-```
+1. **Cloning / Tải mã nguồn dự án:**
+   ```powershell
+   git clone [https://github.com/nhdkn16/networking-traffic-monitor.git](https://github.com/nhdkn16/networking-traffic-monitor.git)
+   cd networking-traffic-monitor

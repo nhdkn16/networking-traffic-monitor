@@ -2,10 +2,18 @@
 
 import logging
 from datetime import datetime, timezone
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
 
-from fastapi import APIRouter, Depends, HTTPException, Request, WebSocket, WebSocketDisconnect
-
-from network_monitor.models.schemas import HealthResponse, InterfaceListResponse, TrafficSample
+from network_monitor.models.schemas import (
+    AlertEvent,
+    AlertRule,
+    AnalyticsSummary,
+    CaptureStatus,
+    HealthResponse,
+    InterfaceListResponse,
+    PacketMetadata,
+    TrafficSample,
+)
 from network_monitor.server.monitoring_service import MonitoringService
 from network_monitor.server.websocket_manager import (
     CLOSE_TRY_AGAIN_LATER,
@@ -19,8 +27,7 @@ from network_monitor.server.websocket_manager import (
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api")
-ws_router = APIRouter()  # Không có tiền tố: đường dẫn WebSocket là /ws (CLAUDE.md mục 3.2)
-
+ws_router = APIRouter()
 
 def get_service(request: Request) -> MonitoringService:
     return request.app.state.service
@@ -35,7 +42,7 @@ async def get_health(
     service: MonitoringService = Depends(get_service),
     ws_manager: WebSocketManager = Depends(get_ws_manager),
 ) -> HealthResponse:
-    """Kiểm tra tình trạng Server."""
+
     status = service.status_data()
     return HealthResponse(
         status=status.status,
@@ -53,12 +60,13 @@ async def get_health(
 def get_interfaces(
     include_all: bool = False, service: MonitoringService = Depends(get_service)
 ) -> InterfaceListResponse:
-    """Danh sách interface trên Host. Mặc định bỏ qua loopback và interface đang ngắt kết nối."""
     try:
         interfaces = service.list_interfaces(include_all=include_all)
-    except Exception:  # noqa: BLE001 - ranh giới I/O
+        
+    except Exception:  # noqa: BLE001
+        
         logger.exception("Không đọc được danh sách interface")
-        raise HTTPException(status_code=500, detail="Không đọc được danh sách interface") from None
+        raise HTTPException(status_code=500, detail="Không đọc được danh sách interface") from None    
     return InterfaceListResponse(monitored_interface=service.interface, interfaces=interfaces)
 
 
@@ -66,7 +74,7 @@ def get_interfaces(
 async def get_current_statistics(
     service: MonitoringService = Depends(get_service),
 ) -> TrafficSample:
-    """Mẫu lưu lượng mới nhất của interface đang giám sát."""
+
     sample = service.latest_sample()
     if sample is None:
         last_error = service.last_error
@@ -77,10 +85,87 @@ async def get_current_statistics(
         raise HTTPException(status_code=503, detail=detail, headers={"Retry-After": "1"})
     return sample
 
+# --- Endpoints cho Packet Capture (Giai đoạn 8) ---
+
+@router.post("/capture/start", response_model=CaptureStatus)
+def start_capture(
+    interface: str | None = Query(default=None),
+    service: MonitoringService = Depends(get_service),
+) -> CaptureStatus:
+
+    success = service.start_capture(interface=interface)
+    if not success:
+        raise HTTPException(
+            status_code=400,
+            detail="Không thể bắt đầu capture (Interface không hợp lệ hoặc thiếu quyền Administrator)",
+        )
+
+    return service.capture_status()
+
+
+@router.post("/capture/stop", response_model=CaptureStatus)
+def stop_capture(
+    service: MonitoringService = Depends(get_service),
+) -> CaptureStatus:
+    service.stop_capture()
+
+    return service.capture_status()
+
+@router.get("/capture/status", response_model=CaptureStatus)
+def get_capture_status(
+    service: MonitoringService = Depends(get_service),
+) -> CaptureStatus:
+    
+    return service.capture_status()
+
+
+@router.get("/capture/packets", response_model=list[PacketMetadata])
+def get_recent_packets(
+    limit: int = Query(default=50, ge=1, le=500),
+    service: MonitoringService = Depends(get_service),
+) -> list[PacketMetadata]:
+
+    return service.recent_packets(limit=limit)
+
+# --- Endpoints mới cho Giai đoạn 9 (Analytics & Alerts) ---
+
+@router.get("/analytics/summary", response_model=AnalyticsSummary)
+def get_analytics_summary(
+    top_n: int = Query(default=5, ge=1, le=20),
+    service: MonitoringService = Depends(get_service),
+) -> AnalyticsSummary:
+
+    return service.get_analytics_summary(top_n=top_n)
+
+
+@router.post("/alerts/config", response_model=AlertRule)
+def update_alert_config(
+    rule: AlertRule,
+    service: MonitoringService = Depends(get_service),
+) -> AlertRule:
+    service.update_alert_rule(rule)
+
+    return service.get_alert_rule()
+
+@router.get("/alerts/config", response_model=AlertRule)
+def get_alert_config(
+    service: MonitoringService = Depends(get_service),
+) -> AlertRule:
+
+    return service.get_alert_rule()
+
+@router.get("/alerts/history", response_model=list[AlertEvent])
+def get_alert_history(
+    limit: int = Query(default=50, ge=1, le=200),
+    service: MonitoringService = Depends(get_service),
+) -> list[AlertEvent]:
+
+    return service.get_alert_history(limit=limit)
+
+# --- WebSocket Endpoint ---
 
 @ws_router.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket) -> None:
-    """Kênh đẩy dữ liệu thời gian thực: server_status, traffic_update; nhận ping và trả pong."""
     service: MonitoringService = websocket.app.state.service
     manager: WebSocketManager = websocket.app.state.ws_manager
     await websocket.accept()
@@ -91,7 +176,7 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
         await websocket.close(code=CLOSE_TRY_AGAIN_LATER, reason="Server đã đạt giới hạn số Client")
         return
     if result != CONNECT_OK:
-        return  # Manager đã gỡ và đóng kết nối này
+        return
 
     try:
         while True:
@@ -102,7 +187,8 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                 break
     except WebSocketDisconnect:
         pass
-    except Exception:  # noqa: BLE001 - ranh giới I/O: không để lỗi một kết nối lan ra ngoài
+    except Exception:  # noqa: BLE001
         logger.exception("Lỗi không mong đợi trên kết nối WebSocket")
     finally:
         manager.unregister(websocket)
+        

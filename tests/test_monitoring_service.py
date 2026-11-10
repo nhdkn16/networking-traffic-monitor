@@ -86,6 +86,48 @@ def test_pinned_interface_drops_stale_data_then_recovers() -> None:
     assert sample.upload_bytes_per_second == pytest.approx(500.0)
     assert service.last_error is None
 
+def test_pinned_interface_down_drops_stale_data_and_recovers() -> None:
+    service, io, _addrs, stats, clock = _service(Settings(interface="Wi-Fi"))
+    _prime(service, io, clock)
+    assert service.latest_sample() is not None
+
+    stats["Wi-Fi"] = _stat(False)  # counters vẫn còn nhưng adapter đã DOWN
+    clock.advance(1.0)
+    asyncio.run(service.sample_once())
+    assert service.latest_sample() is None
+    assert service.status_data().status == "degraded"
+    assert "DOWN" in service.last_error
+    assert service.interface == "Wi-Fi"  # interface được ghim không tự đổi
+
+    stats["Wi-Fi"] = _stat(True)
+    clock.advance(1.0)
+    asyncio.run(service.sample_once())  # lấy baseline mới sau khi phục hồi
+    assert service.latest_sample() is None
+    assert service.status_data().status == "ok"
+
+    io["Wi-Fi"] = _io(3_500, 16_000)
+    clock.advance(1.0)
+    asyncio.run(service.sample_once())
+    sample = service.latest_sample()
+    assert sample is not None
+    assert sample.upload_bytes_per_second == pytest.approx(500.0)
+    assert sample.download_bytes_per_second == pytest.approx(1_000.0)
+
+
+def test_auto_mode_reselects_interface_when_selected_interface_goes_down() -> None:
+    service, _io_counters, _addrs, stats, _clock = _service()
+    asyncio.run(service.sample_once())
+    assert service.interface == "Wi-Fi"
+
+    stats["Wi-Fi"] = _stat(False)
+    asyncio.run(service.sample_once())
+    assert service.latest_sample() is None
+    assert service.status_data().status == "degraded"
+    assert service.interface is None
+
+    asyncio.run(service.sample_once())
+    assert service.interface == "VirtualBox Host-Only"
+    assert service.status_data().status == "ok"
 
 def test_auto_mode_reselects_interface_after_it_disappears() -> None:
     service, io, _addrs, _stats, clock = _service()

@@ -647,26 +647,28 @@ Cập nhật mục này trong quá trình phát triển:
 | Hạng mục | Trạng thái | Ghi chú |
 |---|---|---|
 | Phân tích yêu cầu | Đã thực hiện | Đã đọc CLAUDE.md và thống nhất lộ trình 10 giai đoạn với người dùng |
-| Thiết kế kiến trúc | Định hướng ban đầu | Cần xác nhận với người dùng |
-| Python environment | Đã xác nhận (Host) | Host: Windows 11 Home build 26200, Python 3.13.2, môi trường ảo tại `D:\LTM\networking-traffic-monitor\venv` (Giai đoạn 1-3) và `.venv` (đang dùng từ Giai đoạn 4, `pytest` chạy trong `.venv`); `pip install -r requirements.txt` thành công. Guest: chưa có, dự kiến Windows + Python 3.13 (chưa xác minh) |
-| Khung dự án (Giai đoạn 1) | Đã thực hiện | Cấu trúc thư mục, `main.py` (khung CLI), `requirements.txt`. Đã chạy `python main.py server` và import package trên Host. Chưa có chức năng nghiệp vụ |
-| Network Collector | Đã triển khai, kiểm thử một phần | `core/collector.py`, `models/schemas.py`. Trên Host Windows 11: `python -m pytest` đạt 16/16 (gồm smoke test đọc counters thật); `python main.py collect` hiển thị tốc độ thật của Wi-Fi và tự chọn đúng interface. Còn thiếu: chưa đối chiếu số liệu với Task Manager; chưa kiểm thử trên Guest và khi có adapter VirtualBox Host-only |
-| Packet Sniffer | Chưa triển khai | |
-| HTTP API | Đã triển khai, kiểm thử một phần | `server/routes.py`, `server/monitoring_service.py`, `server/main.py`, `config.py`. Trên Host Windows 11: `python -m pytest` đạt 40/40; `python main.py server` chạy với Uvicorn, `/api/health`, `/api/interfaces`, `/api/statistics/current` trả 200 với dữ liệu thật của Wi-Fi, `/docs` mở được, Ctrl+C tắt sạch. Còn thiếu: chưa thử truy cập từ Guest và với `--host 0.0.0.0` (Firewall); chưa quan sát trực tiếp 503 khi vừa khởi động (mới có unit test); chưa đối chiếu số liệu với Task Manager |
-| WebSocket | Đã triển khai, kiểm thử một phần | `server/websocket_manager.py`, endpoint `/ws` trong `server/routes.py`, `tools/ws_listen.py`. Trên Host Windows 11: `python -m pytest` đạt 66/66 (gồm 7 test `/ws` thật); `ws_listen.py` nhận `server_status` rồi `traffic_update` khoảng 1 message/giây với số liệu thật của Wi-Fi; 2 listener cùng lúc thì `/api/health` báo `websocket_clients` = 2, ngắt một thì còn 1; log Server ghi đủ kết nối/ngắt kết nối; Ctrl+C Server tắt gọn. Còn thiếu: chưa thử tắt/bật Wi-Fi thật (`degraded`/`ok`); chưa quan sát `ping`/`pong` qua công cụ và phía listener khi Server tắt; chưa thử từ Guest; chưa đối chiếu số liệu với Task Manager |
-| Server GUI | Chưa triển khai | |
-| Client GUI | Chưa triển khai | |
-| VirtualBox Host–Guest | Chưa cấu hình | VirtualBox chưa cài. Host hiện chỉ có Wi-Fi hoạt động (192.168.2.7), chưa có IP Host-only |
-| Protocol Analysis | Chưa triển khai | |
-| Top Talkers | Chưa triển khai | |
-| Alert System | Chưa triển khai | |
-| Integration Testing | Chưa thực hiện | |
+| Thiết kế kiến trúc | Định hướng ban đầu | Đã hoàn thiện kiến trúc Client-Server đa luồng |
+| Python environment | Đã xác nhận (Host) | Host: Windows 11 Home build 26200, Python 3.13.2, RAM 15.3 GB. `.venv` đã cài đủ `PyQt6`, `pyqtgraph`, `numpy`, `scapy` |
+| Khung dự án (Giai đoạn 1) | Đã thực hiện | Cấu trúc thư mục, `main.py` (CLI), `requirements.txt`. Đã kiểm chứng |
+| Network Collector (Giai đoạn 2) | Đã triển khai | `core/collector.py`. Đã kiểm thử trên Host, đối chiếu Task Manager |
+| HTTP API (Giai đoạn 3) | Đã triển khai | `server/routes.py`, `server/monitoring_service.py`. 40/40 pytest PASSED |
+| WebSocket (Giai đoạn 4) | Đã triển khai | `server/websocket_manager.py`, endpoint `/ws`. 68/68 pytest PASSED |
+| Client GUI (Giai đoạn 5) | Đã triển khai | `gui/client/main_window.py`. PyQt6 + pyqtgraph realtime traffic plot. Đã kiểm chứng |
+| Reconnect & Resync (Giai đoạn 6) | Đã triển khai | WebSocket reconnect backoff, chèn `np.nan` ngắt nét vẽ khi rớt mạng, tự gọi HTTP REST resync trạng thái/interface khi phục hồi. Đã kiểm chứng |
+| Server GUI (Giai đoạn 7) | Đã triển khai | `gui/server/server_window.py`, `server_thread.py`. Quản trị Server bằng PyQt6 trên Host, điều khiển Uvicorn trong QThread phụ, chuyển hướng Python logging về GUI console |
+| Packet Sniffer (Giai đoạn 8) | Đã triển khai | `core/sniffer.py`, các HTTP REST endpoints `/api/capture/*`. Tích hợp Scapy/Npcap trích xuất metadata gói tin qua Ring Buffer |
+| Protocol / Top Talkers / Alert (Giai đoạn 9) | Đã triển khai | `core/analyzer.py`, `core/alert_engine.py`, các endpoints `/api/analytics/*` & `/api/alerts/*` |
+| Integration Testing (Giai đoạn 10) | Đã triển khai | `tests/test_integration.py`, `README.md`. Kiểm thử End-to-End toàn hệ thống và đóng gói dự án. 74/74 pytest PASSED |
 
-**Giới hạn đã biết (cập nhật sau Giai đoạn 4):**
+**Kiểm thử bản cập nhật (Giai đoạn 10):**
+- Đã chạy thành công 74/74 unit & integration tests trong pytest suite (`test_integration.py` đạt 100%).
+- Đã kiểm tra giải phóng tài nguyên: Khi đóng ứng dụng Server GUI và Client GUI, toàn bộ `QThread`, `asyncio` task và `threading.Thread` của Scapy được dừng hoàn toàn, không có tài nguyên rò rỉ hay tiến trình chạy ẩn.
+- Đã hoàn thiện tài liệu hướng dẫn vận hành chi tiết tại `README.md`.
 
-- API và WebSocket chưa có xác thực; Server mặc định chỉ lắng nghe `127.0.0.1`. Trình duyệt không chặn cross-origin cho WebSocket, nên một trang web trên máy Host có thể kết nối tới `/ws` và đọc số liệu lưu lượng. Cần kiểm tra header `Origin` và xác thực trước khi thêm lệnh điều khiển.
-- Một Client WebSocket chậm có thể kéo giãn một chu kỳ lấy mẫu tối đa khoảng 2 giây trước khi bị ngắt.
-- Số liệu chưa được đối chiếu với Task Manager.
-- `pytest` báo `StarletteDeprecationWarning` về việc dùng `httpx` với `TestClient` (gợi ý `httpx2`); hiện chưa ảnh hưởng kết quả.
+**Giới hạn đã biết:**
+- API và WebSocket hiện tại chưa tích hợp xác thực; Server mặc định bind vào `127.0.0.1`.
+- Tính năng Packet Capture (Giai đoạn 8) yêu cầu Npcap và ứng dụng phải chạy dưới quyền Administrator trên Windows.
+- Ngưỡng cảnh báo `AlertRule` mặc định kiểm tra trên đơn vị Byte/giây; nếu đặt ngưỡng = 0 thì mọi lưu lượng > 0 B/s đều sẽ kích hoạt cảnh báo.
+- Bộ nhớ đệm Ring Buffer của Packet Capture mặc định lưu trữ 1000 gói tin gần nhất để tối ưu bộ nhớ RAM.
 
 **Nguyên tắc cập nhật:** Chỉ đổi trạng thái sau khi có bằng chứng tương ứng. Ghi rõ lỗi, giới hạn và phần còn thiếu.

@@ -1,9 +1,10 @@
 """Entry point của Network Monitor.
 
 Cách chạy (từ thư mục gốc dự án):
-    python main.py server     # Chạy HTTP API trên Host (chưa có Server GUI)
-    python main.py client     # Chạy Client GUI trên Guest (chưa triển khai)
-    python main.py collect    # Chẩn đoán: in lưu lượng thật của một interface (Giai đoạn 2)
+    python main.py server         # Chạy HTTP API trên Host (console)
+    python main.py server --gui   # Chạy Server GUI (PyQt6) trên Host
+    python main.py client         # Chạy Client GUI trên Guest / Host
+    python main.py collect        # Chẩn đoán: in lưu lượng thật của một interface
 """
 
 import argparse
@@ -73,12 +74,20 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     subparsers = parser.add_subparsers(dest="command", metavar="{server,client,collect}")
     subparsers.required = True
-    server = subparsers.add_parser("server", help="Chạy HTTP API trên Host (chưa có Server GUI)")
+
+    # Server parser
+    server = subparsers.add_parser("server", help="Chạy HTTP API Server trên Host")
     server.add_argument("--host", help="Địa chỉ lắng nghe (mặc định 127.0.0.1)")
     server.add_argument("--port", type=_port, help="Cổng lắng nghe (mặc định 8000)")
     server.add_argument("-i", "--interface", help="Interface cần giám sát (mặc định: tự chọn)")
-    subparsers.add_parser("client", help="Chạy Client GUI trên Guest (chưa triển khai)")
+    server.add_argument("--gui", action="store_true", help="Mở giao diện quản trị Server GUI (PyQt6)")
 
+    # Client parser (Giai đoạn 5)
+    client = subparsers.add_parser("client", help="Chạy Client GUI (PyQt6) trên Guest")
+    client.add_argument("--host", help="Địa chỉ Server HTTP/WebSocket (mặc định 127.0.0.1)")
+    client.add_argument("--port", type=_port, help="Cổng Server HTTP/WebSocket (mặc định 8000)")
+
+    # Collect parser
     collect = subparsers.add_parser(
         "collect", help="Chẩn đoán: in lưu lượng thật của một interface trên máy này"
     )
@@ -130,7 +139,7 @@ def _run_collect(args: argparse.Namespace) -> int:
         return 1
 
     try:
-        collector.sample(name)  # Lấy mốc so sánh ban đầu, không in
+        collector.sample(name)
     except InterfaceNotFoundError as exc:
         print(exc, file=sys.stderr)
         available = ", ".join(i.name for i in collector.list_interfaces(include_all=True))
@@ -160,7 +169,6 @@ def _run_collect(args: argparse.Namespace) -> int:
 def _run_server(args: argparse.Namespace) -> int:
     try:
         from network_monitor.config import Settings
-        from network_monitor.server.main import run_server
     except ImportError as exc:
         print(f"Thiếu thư viện: {exc}. Hãy chạy: pip install -r requirements.txt", file=sys.stderr)
         return 1
@@ -181,6 +189,16 @@ def _run_server(args: argparse.Namespace) -> int:
         print(f"Cấu hình không hợp lệ: {exc}", file=sys.stderr)
         return 1
 
+    if getattr(args, "gui", False):
+        try:
+            from network_monitor.gui.server.server_window import run_server_gui
+        except ImportError as exc:
+            print(f"Thiếu thư viện GUI: {exc}. Hãy chạy: pip install -r requirements.txt", file=sys.stderr)
+            return 1
+        run_server_gui(settings)
+        return 0
+
+    from network_monitor.server.main import run_server
     print(f"Khởi động Server tại http://{settings.host}:{settings.port} (tài liệu API: /docs)")
     if settings.host not in ("127.0.0.1", "localhost", "::1"):
         print(
@@ -189,6 +207,26 @@ def _run_server(args: argparse.Namespace) -> int:
         )
     print("Nhấn Ctrl+C để dừng.")
     run_server(settings)
+    return 0
+
+
+def _run_client(args: argparse.Namespace) -> int:
+    try:
+        from network_monitor.config import Settings
+        from network_monitor.gui.client.main_window import run_client_gui
+    except ImportError as exc:
+        print(f"Thiếu thư viện: {exc}. Hãy chạy: pip install -r requirements.txt", file=sys.stderr)
+        return 1
+
+    try:
+        settings = Settings.from_env()
+        host = args.host or settings.host
+        port = args.port or settings.port
+    except ValueError as exc:
+        print(f"Cấu hình không hợp lệ: {exc}", file=sys.stderr)
+        return 1
+
+    run_client_gui(host=host, port=port)
     return 0
 
 
@@ -203,10 +241,11 @@ def main(argv: list[str] | None = None) -> int:
         return _run_collect(args)
     if args.command == "server":
         return _run_server(args)
-    # Các giai đoạn sau sẽ thay thế thông báo này bằng logic thật.
-    print(f"Lệnh '{args.command}' chưa được triển khai (Giai đoạn 4: mới có Collector, HTTP API và WebSocket).")
+    if args.command == "client":
+        return _run_client(args)
     return 0
 
 
 if __name__ == "__main__":
     sys.exit(main())
+    
