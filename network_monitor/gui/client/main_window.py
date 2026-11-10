@@ -1,17 +1,35 @@
+"""Màn hình chính giao diện Client GUI (PyQt6 & pyqtgraph)."""
+
 import sys
-from typing import Dict, Any, List
+from typing import Any, Dict, List
 import numpy as np
-from PyQt6.QtWidgets import (
-    QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
-    QGridLayout, QGroupBox, QLabel, QPushButton, QLineEdit,
-    QSpinBox, QDoubleSpinBox, QCheckBox, QTextEdit, QTabWidget,
-    QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView
-)
 from PyQt6.QtCore import Qt, pyqtSlot
-from PyQt6.QtGui import QFont, QColor
+from PyQt6.QtGui import QColor, QFont
+from PyQt6.QtWidgets import (
+    QAbstractItemView,
+    QApplication,
+    QCheckBox,
+    QDoubleSpinBox,
+    QGridLayout,
+    QGroupBox,
+    QHBoxLayout,
+    QHeaderView,
+    QLabel,
+    QLineEdit,
+    QMainWindow,
+    QPushButton,
+    QSpinBox,
+    QTabWidget,
+    QTableWidget,
+    QTableWidgetItem,
+    QTextEdit,
+    QVBoxLayout,
+    QWidget,
+)
 import pyqtgraph as pg
 
 from network_monitor.gui.client.worker import ClientWorker
+
 
 def format_bytes_speed(bytes_per_sec: float | None) -> str:
     if bytes_per_sec is None or (isinstance(bytes_per_sec, float) and np.isnan(bytes_per_sec)):
@@ -19,6 +37,7 @@ def format_bytes_speed(bytes_per_sec: float | None) -> str:
     if bytes_per_sec >= 1_000_000:
         return f"{bytes_per_sec / 1_000_000:.2f} MB/s"
     return f"{bytes_per_sec / 1000:.2f} KB/s"
+
 
 def format_bytes_total(total_bytes: int | None) -> str:
     if total_bytes is None:
@@ -28,6 +47,7 @@ def format_bytes_total(total_bytes: int | None) -> str:
     if total_bytes >= 1_000_000:
         return f"{total_bytes / 1_000_000:.2f} MB"
     return f"{total_bytes / 1000:.2f} KB"
+
 
 class MainWindow(QMainWindow):
     def __init__(self, default_host: str = "127.0.0.1", default_port: int = 8000):
@@ -87,7 +107,6 @@ class MainWindow(QMainWindow):
         self._init_analytics_tab(self.tab_analytics)
         self.tabs.addTab(self.tab_analytics, "Phân tích Giao thức & Top Talkers")
 
-        # Tab 4 mới cho Bước 4 (Traffic Alerts & History)
         self.tab_alerts = QWidget()
         self._init_alerts_tab(self.tab_alerts)
         self.tabs.addTab(self.tab_alerts, "Cảnh báo Lưu lượng & Lịch sử Alert")
@@ -130,16 +149,20 @@ class MainWindow(QMainWindow):
         graph_box = QGroupBox("Biểu đồ tốc độ băng thông thời gian thực (KB/s)")
         graph_layout = QVBoxLayout(graph_box)
 
-        pg.setConfigOption('background', 'w')
-        pg.setConfigOption('foreground', 'k')
+        pg.setConfigOption("background", "w")
+        pg.setConfigOption("foreground", "k")
         self.plot_widget = pg.PlotWidget()
         self.plot_widget.showGrid(x=True, y=True, alpha=0.3)
-        self.plot_widget.setLabel('left', 'Tốc độ', units='KB/s')
-        self.plot_widget.setLabel('bottom', 'Thời gian', units='mẫu')
+        self.plot_widget.setLabel("left", "Tốc độ", units="KB/s")
+        self.plot_widget.setLabel("bottom", "Thời gian", units="mẫu")
         self.plot_widget.addLegend()
 
-        self.curve_upload = self.plot_widget.plot(pen=pg.mkPen(color='#d9534f', width=2), name='Upload (KB/s)', connect="finite")
-        self.curve_download = self.plot_widget.plot(pen=pg.mkPen(color='#0275d8', width=2), name='Download (KB/s)', connect="finite")
+        self.curve_upload = self.plot_widget.plot(
+            pen=pg.mkPen(color="#d9534f", width=2), name="Upload (KB/s)", connect="finite"
+        )
+        self.curve_download = self.plot_widget.plot(
+            pen=pg.mkPen(color="#0275d8", width=2), name="Download (KB/s)", connect="finite"
+        )
         graph_layout.addWidget(self.plot_widget)
 
         layout.addWidget(graph_box, stretch=2)
@@ -179,9 +202,18 @@ class MainWindow(QMainWindow):
         table_box = QGroupBox("Danh sách Gói tin Mạng (Packet Ring Buffer)")
         table_layout = QVBoxLayout(table_box)
 
-        self.packet_table = QTableWidget(0, 8)
+        # Mở rộng bảng lên 9 cột để chứa cột Tiến trình (.exe)
+        self.packet_table = QTableWidget(0, 9)
         self.packet_table.setHorizontalHeaderLabels([
-            "#", "Thời gian (UTC)", "IP Nguồn", "Cổng Nguồn", "IP Đích", "Cổng Đích", "Giao thức", "Độ dài (Bytes)"
+            "#",
+            "Thời gian (UTC)",
+            "Tiến trình (.exe)",
+            "IP Nguồn",
+            "Cổng Nguồn",
+            "IP Đích",
+            "Cổng Đích",
+            "Giao thức",
+            "Độ dài (Bytes)",
         ])
         self.packet_table.verticalHeader().setVisible(False)
         self.packet_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
@@ -197,7 +229,9 @@ class MainWindow(QMainWindow):
 
         self.inspect_text = QTextEdit()
         self.inspect_text.setReadOnly(True)
-        self.inspect_text.setPlaceholderText("Nhấp chọn một dòng gói tin ở bảng trên để xem phân tích chi tiết các tầng mạng...")
+        self.inspect_text.setPlaceholderText(
+            "Nhấp chọn một dòng gói tin ở bảng trên để xem phân tích chi tiết các tầng mạng..."
+        )
         inspect_layout.addWidget(self.inspect_text)
 
         layout.addWidget(inspect_box, stretch=1)
@@ -245,7 +279,6 @@ class MainWindow(QMainWindow):
     def _init_alerts_tab(self, parent: QWidget) -> None:
         layout = QVBoxLayout(parent)
 
-        # 1. Khung cấu hình ngưỡng cảnh báo
         cfg_box = QGroupBox("Thiết lập Ngưỡng Cảnh báo Tốc độ (Threshold Alerting Rules)")
         cfg_layout = QHBoxLayout(cfg_box)
 
@@ -276,7 +309,6 @@ class MainWindow(QMainWindow):
 
         layout.addWidget(cfg_box)
 
-        # 2. Khung Bảng nhật ký lịch sử cảnh báo
         history_box = QGroupBox("Nhật ký Lịch sử Sự kiện Cảnh báo (Alert History)")
         history_layout = QVBoxLayout(history_box)
 
@@ -336,7 +368,6 @@ class MainWindow(QMainWindow):
             item_thresh = QTableWidgetItem(format_bytes_speed(thresh_val))
             item_msg = QTableWidgetItem(msg)
 
-            # Tô màu đỏ cho dòng cảnh báo
             item_type.setForeground(QColor("#d9534f"))
             item_msg.setForeground(QColor("#d9534f"))
 
@@ -384,20 +415,26 @@ class MainWindow(QMainWindow):
             if "T" in ts_str:
                 ts_str = ts_str.split("T")[1].replace("Z", "")[:8]
 
+            proc_name = str(pkt.get("process_name") or "Unknown / System")
             src_port = str(pkt.get("src_port") or "-")
             dst_port = str(pkt.get("dst_port") or "-")
 
             self.packet_table.setItem(row, 0, QTableWidgetItem(str(idx + 1)))
             self.packet_table.setItem(row, 1, QTableWidgetItem(ts_str))
-            self.packet_table.setItem(row, 2, QTableWidgetItem(str(pkt.get("src_ip", "-"))))
-            self.packet_table.setItem(row, 3, QTableWidgetItem(src_port))
-            self.packet_table.setItem(row, 4, QTableWidgetItem(str(pkt.get("dst_ip", "-"))))
-            self.packet_table.setItem(row, 5, QTableWidgetItem(dst_port))
-            self.packet_table.setItem(row, 6, QTableWidgetItem(str(pkt.get("protocol", "-"))))
+
+            proc_item = QTableWidgetItem(proc_name)
+            proc_item.setForeground(QColor("#0275d8"))
+            self.packet_table.setItem(row, 2, proc_item)
+
+            self.packet_table.setItem(row, 3, QTableWidgetItem(str(pkt.get("src_ip", "-"))))
+            self.packet_table.setItem(row, 4, QTableWidgetItem(src_port))
+            self.packet_table.setItem(row, 5, QTableWidgetItem(str(pkt.get("dst_ip", "-"))))
+            self.packet_table.setItem(row, 6, QTableWidgetItem(dst_port))
+            self.packet_table.setItem(row, 7, QTableWidgetItem(str(pkt.get("protocol", "-"))))
 
             len_item = QTableWidgetItem(str(pkt.get("length_bytes", 0)))
             len_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-            self.packet_table.setItem(row, 7, len_item)
+            self.packet_table.setItem(row, 8, len_item)
 
     @pyqtSlot(dict)
     def _on_analytics_updated(self, analytics: Dict[str, Any]) -> None:
@@ -451,11 +488,17 @@ class MainWindow(QMainWindow):
         dst_port = pkt.get("dst_port")
         length = pkt.get("length_bytes", 0)
         ts = pkt.get("timestamp", "")
+        proc_name = pkt.get("process_name") or "Chưa xác định"
+        proc_id = pkt.get("process_id") or "N/A"
 
         detail = [
             f"=== GÓI TIN MẠNG #{packet_num} ===",
             f"Mốc thời gian (ISO 8601 UTC): {ts}",
             f"Tổng độ dài khung gói tin (Frame Length): {length} bytes ({length * 8} bits)",
+            "",
+            "--- THÔNG TIN TIẾN TRÌNH HỆ THỐNG (PROCESS INFO) ---",
+            f"  * Tên Tiến trình (.exe): {proc_name}",
+            f"  * Mã Tiến trình (PID): {proc_id}",
             "",
             "--- TẦNG MẠNG (NETWORK LAYER / INTERNET PROTOCOL) ---",
             f"  * Phiên bản / Giao thức: {proto}",
@@ -583,7 +626,9 @@ class MainWindow(QMainWindow):
     def _on_resynced(self, data: Dict[str, Any]) -> None:
         health = data.get("health", {})
         interfaces = data.get("interfaces", [])
-        self._on_log_message(f"[RESYNC SUCCESS] Đã đồng bộ lại {len(interfaces)} giao diện từ Server (Trạng thái: {health.get('status')})")
+        self._on_log_message(
+            f"[RESYNC SUCCESS] Đã đồng bộ lại {len(interfaces)} giao diện từ Server (Trạng thái: {health.get('status')})"
+        )
 
     @pyqtSlot(str)
     def _on_log_message(self, message: str) -> None:

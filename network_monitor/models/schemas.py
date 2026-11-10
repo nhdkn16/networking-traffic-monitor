@@ -103,6 +103,8 @@ class PacketMetadata(BaseModel):
     dst_port: int | None = None
     protocol: str
     length_bytes: int
+    process_name: str | None = None
+    process_id: int | None = None
 
 
 class CaptureStatus(BaseModel):

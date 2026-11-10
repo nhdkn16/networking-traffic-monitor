@@ -6,6 +6,7 @@ import logging
 import threading
 from typing import Optional
 
+from network_monitor.core.process_mapper import ProcessMapper
 from network_monitor.models.schemas import CaptureStatus, PacketMetadata
 
 logger = logging.getLogger(__name__)
@@ -23,6 +24,7 @@ class PacketSniffer:
         self._error_message: Optional[str] = None
         self._packet_count = 0
         self._lock = threading.Lock()
+        self._process_mapper = ProcessMapper(cache_ttl=1.0)
 
     def get_status(self) -> CaptureStatus:
         with self._lock:
@@ -105,6 +107,11 @@ class PacketSniffer:
                 elif pkt.haslayer(ICMP):
                     protocol = "ICMP"
 
+                # Ánh xạ Tên Tiến trình (.exe) dựa trên IP / Port
+                proc_name, proc_id = self._process_mapper.get_process_info(
+                    protocol, src_ip, src_port, dst_ip, dst_port
+                )
+
                 metadata = PacketMetadata(
                     timestamp=datetime.datetime.now(datetime.timezone.utc),
                     src_ip=src_ip,
@@ -113,6 +120,8 @@ class PacketSniffer:
                     dst_port=dst_port,
                     protocol=protocol,
                     length_bytes=len(pkt),
+                    process_name=proc_name,
+                    process_id=proc_id,
                 )
 
                 with self._lock:
@@ -120,7 +129,7 @@ class PacketSniffer:
                     self._packet_count += 1
 
             except Exception as exc:
-                logger.debug(f"Lỗi khi xử lý gói tin Scapy: {exc}")
+                logger.debug("Lỗi khi xử lý gói tin Scapy: %s", exc)
 
         try:
             sniff(
@@ -133,21 +142,28 @@ class PacketSniffer:
             with self._lock:
                 self._is_running = False
                 self._error_message = f"Lỗi Scapy/Npcap (Cần quyền Administrator): {exc}"
-                logger.error(f"Lỗi bắt gói tin trên {interface}: {exc}")
+                logger.error("Lỗi bắt gói tin trên %s: %s", interface, exc)
 
     def _running_check(self) -> bool:
         with self._lock:
             return self._is_running
 
     def add_packet_metadata(self, metadata: PacketMetadata) -> None:
-        """Nạp trực tiếp một đối tượng PacketMetadata vào Ring Buffer và tăng đếm gói tin."""
-        if hasattr(self, "_packets"):
-            self._packets.append(metadata)
-        elif hasattr(self, "packets"):
-            self.packets.append(metadata)
+        """Nạp trực tiếp PacketMetadata vào Ring Buffer."""
+        # Nếu chưa có tên tiến trình, tự tra cứu bổ sung
+        if not metadata.process_name or metadata.process_name in ("Unknown", "None"):
+            proc_name, proc_id = self._process_mapper.get_process_info(
+                metadata.protocol,
+                metadata.src_ip,
+                metadata.src_port,
+                metadata.dst_ip,
+                metadata.dst_port,
+            )
+            metadata = metadata.model_copy(
+                update={"process_name": proc_name, "process_id": proc_id}
+            )
 
-        if hasattr(self, "_packet_count"):
+        with self._lock:
+            self._packets.append(metadata)
             self._packet_count += 1
-        elif hasattr(self, "packet_count"):
-            self.packet_count += 1
             
